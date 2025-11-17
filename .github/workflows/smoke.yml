@@ -37,6 +37,44 @@ jobs:
 
       - name: Build
         run: npm run build || echo "No build script in root"
+
+      - name: Test Docker build (agent)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        run: |
+          cd agent
+          docker build -t leadpipe-agent:test .
+          echo "✅ Docker build successful"
+
+      - name: Test health endpoint
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+        run: |
+          # Start the server in background
+          npm start &
+          SERVER_PID=$!
+
+          # Wait for server to start and test health endpoint
+          timeout=30
+          elapsed=0
+          health_ok=false
+
+          while [ $elapsed -lt $timeout ] && [ "$health_ok" = false ]; do
+            if curl -f http://localhost:3000/api/health 2>/dev/null; then
+              health_ok=true
+              echo "✅ Health endpoint working"
+            else
+              sleep 1
+              elapsed=$((elapsed + 1))
+            fi
+          done
+
+          # Clean up
+          kill $SERVER_PID 2>/dev/null || true
+
+          if [ "$health_ok" = false ]; then
+            echo "❌ Health endpoint failed"
+            exit 1
+          fi
+        shell: bash
       - name: Start and check main app (Linux/macOS)
         if: runner.os != 'Windows'
         run: |

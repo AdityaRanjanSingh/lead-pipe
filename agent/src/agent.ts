@@ -12,6 +12,12 @@ import { MemorySaver, START, StateGraph } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { convertActionsToDynamicStructuredTools, CopilotKitStateAnnotation } from "@copilotkit/sdk-js/langgraph";
 import { Annotation } from "@langchain/langgraph";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { Pool } from "pg";
+import { initializeSentry } from "./sentry";
+
+// Initialize Sentry error tracking
+initializeSentry();
 
 // 1. Define our agent state, which includes CopilotKit state to
 //    provide actions to the state.
@@ -102,8 +108,47 @@ const workflow = new StateGraph(AgentStateAnnotation)
   .addEdge("tool_node", "chat_node")
   .addConditionalEdges("chat_node", shouldContinue as any);
 
-const memory = new MemorySaver();
+// Initialize checkpointer based on environment
+// Use PostgreSQL for production, MemorySaver for development
+async function initializeCheckpointer() {
+  const databaseUrl = process.env.DATABASE_URL;
 
-export const graph = workflow.compile({
-  checkpointer: memory,
+  if (databaseUrl) {
+    // Production: Use PostgreSQL checkpointer
+    console.log("🗄️  Initializing PostgreSQL checkpointer...");
+
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    });
+
+    // Test database connection
+    try {
+      await pool.query("SELECT NOW()");
+      console.log("✅ PostgreSQL connection established");
+    } catch (error) {
+      console.error("❌ PostgreSQL connection failed:", error);
+      throw error;
+    }
+
+    const checkpointer = new PostgresSaver(pool);
+
+    // Setup database tables
+    await checkpointer.setup();
+    console.log("✅ PostgreSQL checkpointer initialized");
+
+    return checkpointer;
+  } else {
+    // Development: Use in-memory checkpointer
+    console.log("💾 Using in-memory checkpointer (MemorySaver)");
+    console.log("⚠️  State will be lost on restart. Set DATABASE_URL for persistent storage.");
+    return new MemorySaver();
+  }
+}
+
+// Export a promise that resolves to the compiled graph
+export const graph = initializeCheckpointer().then((checkpointer) => {
+  return workflow.compile({
+    checkpointer,
+  });
 });

@@ -36,7 +36,10 @@ jobs:
           npm install
 
       - name: Build
-        run: npm run build || echo "No build script in root"
+        run: npm run build
+        env:
+          LANGGRAPH_DEPLOYMENT_URL: http://localhost:8123
+          LANGSMITH_API_KEY: test-key
 
       - name: Test Docker build (agent)
         if: matrix.os == 'ubuntu-latest' && matrix.node == '20'

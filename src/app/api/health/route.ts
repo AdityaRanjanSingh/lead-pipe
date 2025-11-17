@@ -83,7 +83,8 @@ export async function GET() {
       },
     };
 
-    const statusCode = status === "unhealthy" ? 503 : status === "degraded" ? 200 : 200;
+    const statusCode =
+      healthStatus.status === "unhealthy" ? 503 : healthStatus.status === "degraded" ? 200 : 200;
 
     return NextResponse.json(healthStatus, { status: statusCode });
   } catch (error) {

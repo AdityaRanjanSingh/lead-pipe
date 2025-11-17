@@ -7,9 +7,6 @@ const nextConfig: NextConfig = {
   // Compress responses
   compress: true,
 
-  // Enable SWC minification
-  swcMinify: true,
-
   // Image optimization
   images: {
     formats: ['image/avif', 'image/webp'],

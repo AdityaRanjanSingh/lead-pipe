@@ -112,12 +112,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 This application is configured for production deployment with:
 - **UI**: Vercel (optimized for Next.js)
-- **Agent**: Railway or Render (containerized with Docker)
+- **Agent**: Render (containerized with Docker)
 - **Database**: PostgreSQL (for persistent agent state)
 
 ### Quick Deployment Guide
 
-1. **Deploy the Agent** (Railway/Render):
+1. **Deploy the Agent** (Render):
    - Build the Docker image from `agent/Dockerfile`
    - Set environment variables (see `agent/.env.example`)
    - Configure PostgreSQL database connection via `DATABASE_URL`
@@ -138,7 +138,7 @@ This application is configured for production deployment with:
 
 Both services provide health check endpoints:
 - UI: `https://your-app.vercel.app/api/health`
-- Agent: `https://your-agent.railway.app/health`
+- Agent: `https://your-agent.onrender.com/health`
 
 For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
 

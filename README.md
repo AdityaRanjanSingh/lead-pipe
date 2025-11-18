@@ -108,10 +108,58 @@ Feel free to submit issues and enhancement requests! This starter is designed to
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Deployment
+
+This application is configured for production deployment with:
+- **UI**: Vercel (optimized for Next.js)
+- **Agent**: Render (containerized with Docker)
+- **Database**: PostgreSQL (for persistent agent state)
+
+### Quick Deployment Guide
+
+1. **Deploy the Agent** (Render):
+   - Build the Docker image from `agent/Dockerfile`
+   - Set environment variables (see `agent/.env.example`)
+   - Configure PostgreSQL database connection via `DATABASE_URL`
+   - Ensure port 8123 is exposed
+
+2. **Deploy the UI** (Vercel):
+   - Connect your repository to Vercel
+   - Set environment variables (see `.env.example`)
+   - Configure `LANGGRAPH_DEPLOYMENT_URL` to point to your deployed agent
+   - Vercel will auto-deploy on push to main
+
+3. **Configure CI/CD**:
+   - GitHub Actions workflows are pre-configured in `.github/workflows/`
+   - Set required secrets in your GitHub repository settings
+   - See `DEPLOYMENT.md` for detailed instructions
+
+### Health Checks
+
+Both services provide health check endpoints:
+- UI: `https://your-app.vercel.app/api/health`
+- Agent: `https://your-agent.onrender.com/health`
+
+For detailed deployment instructions, see [DEPLOYMENT.md](./DEPLOYMENT.md).
+
 ## Troubleshooting
 
 ### Agent Connection Issues
 If you see "I'm having trouble connecting to my tools", make sure:
-1. The LangGraph agent is running on port 8000
+1. The LangGraph agent is running on port 8123
 2. Your OpenAI API key is set correctly
 3. Both servers started successfully
+4. The `LANGGRAPH_DEPLOYMENT_URL` is configured correctly
+
+### Database Connection Issues
+If you encounter database errors:
+1. Verify `DATABASE_URL` is set correctly
+2. Ensure PostgreSQL is accessible from your deployment environment
+3. Check that the database schema is initialized (agent does this automatically on startup)
+
+### Health Check Failures
+If health checks fail:
+1. Check service logs for errors
+2. Verify environment variables are set
+3. Ensure network connectivity between services
+4. Test endpoints manually with curl or browser

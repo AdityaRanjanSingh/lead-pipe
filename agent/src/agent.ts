@@ -8,10 +8,16 @@ import { RunnableConfig } from "@langchain/core/runnables";
 import { tool } from "@langchain/core/tools";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage, SystemMessage } from "@langchain/core/messages";
-import { MemorySaver, START, StateGraph } from "@langchain/langgraph";
+import { MemorySaver, START, StateGraph, BaseCheckpointSaver } from "@langchain/langgraph";
 import { ChatOpenAI } from "@langchain/openai";
 import { convertActionsToDynamicStructuredTools, CopilotKitStateAnnotation } from "@copilotkit/sdk-js/langgraph";
 import { Annotation } from "@langchain/langgraph";
+import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
+import { Pool } from "pg";
+import { initializeSentry } from "./sentry";
+
+// Initialize Sentry error tracking
+initializeSentry();
 
 // 1. Define our agent state, which includes CopilotKit state to
 //    provide actions to the state.
@@ -102,8 +108,92 @@ const workflow = new StateGraph(AgentStateAnnotation)
   .addEdge("tool_node", "chat_node")
   .addConditionalEdges("chat_node", shouldContinue as any);
 
-const memory = new MemorySaver();
+type PostgresSaverWithDelete = PostgresSaver &
+  BaseCheckpointSaver & {
+    deleteThread?: (threadId: string) => Promise<void>;
+  };
 
-export const graph = workflow.compile({
-  checkpointer: memory,
+function ensureDeleteThreadSupport(checkpointer: PostgresSaver): BaseCheckpointSaver {
+  const typedCheckpointer = checkpointer as PostgresSaverWithDelete;
+
+  if (typeof typedCheckpointer.deleteThread !== "function") {
+    typedCheckpointer.deleteThread = async (threadId: string) => {
+      const pool = (typedCheckpointer as unknown as { pool?: Pool }).pool;
+      const schema =
+        (typedCheckpointer as unknown as { options?: { schema?: string } }).options
+          ?.schema ?? "public";
+
+      if (!pool) {
+        throw new Error("PostgreSQL pool is not set on the PostgresSaver instance");
+      }
+
+      const tables = {
+        checkpoints: `${schema}.checkpoints`,
+        checkpointBlobs: `${schema}.checkpoint_blobs`,
+        checkpointWrites: `${schema}.checkpoint_writes`,
+      };
+
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        await client.query(`DELETE FROM ${tables.checkpointWrites} WHERE thread_id = $1`, [threadId]);
+        await client.query(`DELETE FROM ${tables.checkpointBlobs} WHERE thread_id = $1`, [threadId]);
+        await client.query(`DELETE FROM ${tables.checkpoints} WHERE thread_id = $1`, [threadId]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    };
+  }
+
+  return typedCheckpointer;
+}
+
+// Initialize checkpointer based on environment
+// Use PostgreSQL for production, MemorySaver for development
+async function initializeCheckpointer(): Promise<BaseCheckpointSaver> {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (databaseUrl) {
+    // Production: Use PostgreSQL checkpointer
+    console.log("🗄️  Initializing PostgreSQL checkpointer...");
+
+    const pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    });
+
+    // Test database connection
+    try {
+      await pool.query("SELECT NOW()");
+      console.log("✅ PostgreSQL connection established");
+    } catch (error) {
+      console.error("❌ PostgreSQL connection failed:", error);
+      throw error;
+    }
+
+    const checkpointer = new PostgresSaver(pool);
+
+    // Setup database tables
+    await checkpointer.setup();
+    console.log("✅ PostgreSQL checkpointer initialized");
+
+    return ensureDeleteThreadSupport(checkpointer);
+  } else {
+    // Development: Use in-memory checkpointer
+    console.log("💾 Using in-memory checkpointer (MemorySaver)");
+    console.log("⚠️  State will be lost on restart. Set DATABASE_URL for persistent storage.");
+    return new MemorySaver();
+  }
+}
+
+// Export a promise that resolves to the compiled graph
+export const graph = initializeCheckpointer().then((checkpointer) => {
+  return workflow.compile({
+    checkpointer,
+  });
 });

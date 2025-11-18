@@ -1,0 +1,144 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # Deploy Agent to Render
+  deploy-agent:
+    name: Deploy Agent
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        run: |
+          # Trigger Render deployment via API
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      - name: Wait for agent deployment
+        run: |
+          echo "Waiting 30 seconds for agent to start..."
+          sleep 30
+
+      - name: Health check agent
+        run: |
+          # Check agent health endpoint
+          AGENT_URL="${{ secrets.LANGGRAPH_DEPLOYMENT_URL }}"
+
+          for i in {1..10}; do
+            if curl -f "${AGENT_URL}/health" --max-time 10; then
+              echo "✅ Agent health check passed"
+              exit 0
+            fi
+            echo "⏳ Waiting for agent to be ready (attempt $i/10)..."
+            sleep 10
+          done
+
+          echo "❌ Agent health check failed"
+          exit 1
+
+  # Deploy UI to Vercel (automatic via Vercel GitHub integration)
+  # This job is optional - Vercel will auto-deploy on push to main
+  # Included here for explicit control and post-deployment checks
+  deploy-ui:
+    name: Deploy UI to Vercel
+    runs-on: ubuntu-latest
+    needs: deploy-agent
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build UI
+        run: npm run build
+        env:
+          LANGGRAPH_DEPLOYMENT_URL: ${{ secrets.LANGGRAPH_DEPLOYMENT_URL }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+
+      - name: Wait for Vercel deployment
+        run: |
+          echo "Waiting 30 seconds for Vercel deployment..."
+          sleep 30
+
+      - name: Health check UI
+        run: |
+          # Check UI health endpoint
+          UI_URL="${{ secrets.VERCEL_URL }}"
+
+          for i in {1..10}; do
+            if curl -f "https://${UI_URL}/api/health" --max-time 10; then
+              echo "✅ UI health check passed"
+              exit 0
+            fi
+            echo "⏳ Waiting for UI to be ready (attempt $i/10)..."
+            sleep 10
+          done
+
+          echo "❌ UI health check failed"
+          exit 1
+
+  # Post-deployment verification
+  post-deployment:
+    name: Post-Deployment Verification
+    runs-on: ubuntu-latest
+    needs: [deploy-agent, deploy-ui]
+    steps:
+      - name: Verify end-to-end connectivity
+        run: |
+          echo "🔍 Verifying end-to-end connectivity..."
+
+          # Check UI health (which includes agent connectivity check)
+          UI_URL="${{ secrets.VERCEL_URL }}"
+          RESPONSE=$(curl -s "https://${UI_URL}/api/health")
+
+          echo "Health check response: $RESPONSE"
+
+          # Parse and verify status
+          STATUS=$(echo $RESPONSE | jq -r '.status')
+          AGENT_STATUS=$(echo $RESPONSE | jq -r '.checks.agent.status')
+
+          if [ "$STATUS" = "healthy" ] && [ "$AGENT_STATUS" = "connected" ]; then
+            echo "✅ End-to-end verification passed"
+            exit 0
+          else
+            echo "❌ End-to-end verification failed"
+            echo "Overall status: $STATUS"
+            echo "Agent status: $AGENT_STATUS"
+            exit 1
+          fi
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "🎉 Deployment successful!"
+          echo "UI: https://${{ secrets.VERCEL_URL }}"
+          echo "Agent: ${{ secrets.LANGGRAPH_DEPLOYMENT_URL }}"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed. Please check the logs."

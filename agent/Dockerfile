@@ -5,17 +5,21 @@ FROM node:20-alpine AS base
 FROM base AS deps
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy lockfile and manifest separately to ensure npm ci can run
+COPY package.json ./
+COPY package-lock.json ./
 
-# Install dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install system deps required for native Node modules, then prod deps
+RUN apk add --no-cache python3 make g++ \
+    && npm ci --omit=dev \
+    && npm cache clean --force
 
 # Development dependencies for build
 FROM base AS dev-deps
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+COPY package.json ./
+COPY package-lock.json ./
+RUN apk add --no-cache python3 make g++ && npm ci
 
 # Production image
 FROM base AS runner

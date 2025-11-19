@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "langgraphjs dev --port ${PORT:-8123} --host 0.0.0.0 --no-browser"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -19,6 +23,7 @@
     "@langchain/langgraph": "^0.4.9",
     "@langchain/langgraph-checkpoint": "^0.0.16",
     "@langchain/openai": "^0.3.14",
+    "hono": "^4.10.6",
     "zod": "^3.23.8"
   },
   "pnpm": {

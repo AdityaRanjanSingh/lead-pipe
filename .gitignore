@@ -42,6 +42,7 @@ next-env.d.ts
 
 # lock files
 package-lock.json
+!agent/package-lock.json
 yarn.lock
 pnpm-lock.yaml
 bun.lockb

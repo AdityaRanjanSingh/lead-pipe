@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  agent-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lead-pipe-agent:latest
+    container_name: lead-pipe-agent-server
+    ports:
+      - "${PORT:-8123}:8123"
+    environment:
+      # Server Configuration
+      - NODE_ENV=production
+      - PORT=8123
+
+      # Required: LLM API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+
+      # Render-compatible environment variables
+      # Use REDIS_URI and DATABASE_URI (Render naming convention)
+      - REDIS_URI=${REDIS_URI:-}
+      - DATABASE_URI=${DATABASE_URI:-}
+
+      # Optional: Additional LLM Providers
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+
+      # Optional: LangSmith Observability
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-}
+      - LANGCHAIN_TRACING_V2=${LANGCHAIN_TRACING_V2:-false}
+      - LANGCHAIN_ENDPOINT=${LANGCHAIN_ENDPOINT:-https://api.smith.langchain.com}
+
+      # Optional: Error Tracking
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8123/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge

@@ -1,0 +1,62 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+dist
+build
+*.tsbuildinfo
+
+# Environment files (will be passed via docker-compose)
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+coverage
+*.test.ts
+*.spec.ts
+__tests__
+__mocks__
+
+# Documentation
+README.md
+*.md
+docs
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+
+# Docker files (avoid recursion)
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Runtime state files
+.langgraph_api
+*.pid
+*.seed
+*.log
+
+# Temporary files
+tmp
+temp
+*.tmp
